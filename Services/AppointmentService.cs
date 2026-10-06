@@ -294,7 +294,7 @@ namespace AppointmentSystem.API.Services
                 return false;
 
             // Only advisors can confirm appointments, and only ones still waiting for a decision
-            if (userRole != "Advisor" || appointment.Advisor.UserId != userId)
+            if (!CanManageAsAdvisor(appointment, userId, userRole))
                 return false;
             if (appointment.Status != "Scheduled")
                 return false;
@@ -332,7 +332,7 @@ namespace AppointmentSystem.API.Services
                 return false;
 
             // Only the advisor of a confirmed appointment can mark it as completed
-            if (userRole != "Advisor" || appointment.Advisor.UserId != userId)
+            if (!CanManageAsAdvisor(appointment, userId, userRole))
                 return false;
             if (appointment.Status != "Confirmed")
                 return false;
@@ -344,6 +344,10 @@ namespace AppointmentSystem.API.Services
 
             return true;
         }
+
+        // Admins can act on any appointment; advisors only on their own
+        private static bool CanManageAsAdvisor(Models.Appointment appointment, string userId, string userRole) =>
+            userRole == "Admin" || (userRole == "Advisor" && appointment.Advisor.UserId == userId);
 
         // The whole slot must sit inside one availability window (recurring weekday or one-time date)
         private async Task<bool> IsWithinAvailabilityAsync(int advisorId, DateTime start, DateTime end)

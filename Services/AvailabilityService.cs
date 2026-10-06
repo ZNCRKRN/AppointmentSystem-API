@@ -47,11 +47,11 @@ namespace AppointmentSystem.API.Services
             };
         }
 
-        public async Task<AvailabilityResponse?> UpdateAvailabilityAsync(int availabilityId, UpdateAvailabilityRequest request, string advisorId)
+        public async Task<AvailabilityResponse?> UpdateAvailabilityAsync(int availabilityId, UpdateAvailabilityRequest request, string advisorId, bool isAdmin = false)
         {
             var availability = await _context.Availabilities
                 .Include(a => a.Advisor)
-                .FirstOrDefaultAsync(a => a.Id == availabilityId && a.Advisor.UserId == advisorId);
+                .FirstOrDefaultAsync(a => a.Id == availabilityId && (isAdmin || a.Advisor.UserId == advisorId));
 
             if (availability == null)
                 return null;
@@ -86,11 +86,11 @@ namespace AppointmentSystem.API.Services
             };
         }
 
-        public async Task<bool> DeleteAvailabilityAsync(int availabilityId, string advisorId)
+        public async Task<bool> DeleteAvailabilityAsync(int availabilityId, string advisorId, bool isAdmin = false)
         {
             var availability = await _context.Availabilities
                 .Include(a => a.Advisor)
-                .FirstOrDefaultAsync(a => a.Id == availabilityId && a.Advisor.UserId == advisorId);
+                .FirstOrDefaultAsync(a => a.Id == availabilityId && (isAdmin || a.Advisor.UserId == advisorId));
 
             if (availability == null)
                 return false;
@@ -106,9 +106,13 @@ namespace AppointmentSystem.API.Services
             var availabilities = await _context.Availabilities
                 .Include(a => a.Advisor)
                 .Where(a => a.AdvisorId == advisorId)
+                .ToListAsync();
+
+            // Sorted in memory: SQLite cannot ORDER BY TimeSpan columns
+            availabilities = availabilities
                 .OrderBy(a => a.DayOfWeek)
                 .ThenBy(a => a.StartTime)
-                .ToListAsync();
+                .ToList();
 
             return availabilities.Select(a => new AvailabilityResponse
             {

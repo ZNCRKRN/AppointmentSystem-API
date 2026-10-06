@@ -59,6 +59,15 @@ namespace AppointmentSystem.API.Controllers
             return Ok(availability);
         }
 
+        // Admins can view any advisor's schedule
+        [HttpGet("advisor/{advisorId}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<IEnumerable<AvailabilityResponse>>> GetAdvisorAvailabilities(int advisorId)
+        {
+            var availabilities = await _availabilityService.GetAvailabilitiesAsync(advisorId);
+            return Ok(availabilities);
+        }
+
         [HttpGet]
         public async Task<ActionResult<IEnumerable<AvailabilityResponse>>> GetAvailabilities()
         {
@@ -84,7 +93,7 @@ namespace AppointmentSystem.API.Controllers
             if (userId == null)
                 return Unauthorized();
 
-            var result = await _availabilityService.UpdateAvailabilityAsync(id, request, userId);
+            var result = await _availabilityService.UpdateAvailabilityAsync(id, request, userId, User.IsInRole("Admin"));
             if (result == null)
                 return NotFound("Availability not found or you don't have permission to update it");
 
@@ -98,7 +107,7 @@ namespace AppointmentSystem.API.Controllers
             if (userId == null)
                 return Unauthorized();
 
-            var result = await _availabilityService.DeleteAvailabilityAsync(id, userId);
+            var result = await _availabilityService.DeleteAvailabilityAsync(id, userId, User.IsInRole("Admin"));
             if (!result)
                 return NotFound("Availability not found or you don't have permission to delete it");
 
