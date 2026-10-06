@@ -11,6 +11,7 @@ namespace AppointmentSystem.API.Services
         Task<IEnumerable<AppointmentResponse>> GetAppointmentsAsync(AppointmentListRequest request, string userId, string userRole);
         Task<bool> CancelAppointmentAsync(int appointmentId, string userId, string userRole);
         Task<bool> ConfirmAppointmentAsync(int appointmentId, string userId, string userRole);
+        Task<bool> CompleteAppointmentAsync(int appointmentId, string userId, string userRole);
     }
 }
 

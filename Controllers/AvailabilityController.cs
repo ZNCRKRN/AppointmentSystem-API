@@ -48,7 +48,7 @@ namespace AppointmentSystem.API.Controllers
 
             var advisor = await _context.Advisors.FirstOrDefaultAsync(a => a.UserId == userId);
             if (advisor == null)
-                return Forbid("Only advisors can access availability information");
+                return StatusCode(StatusCodes.Status403Forbidden, "Only advisors can access availability information");
 
             var availabilities = await _availabilityService.GetAvailabilitiesAsync(advisor.Id);
             var availability = availabilities.FirstOrDefault(a => a.Id == id);
@@ -68,7 +68,7 @@ namespace AppointmentSystem.API.Controllers
 
             var advisor = await _context.Advisors.FirstOrDefaultAsync(a => a.UserId == userId);
             if (advisor == null)
-                return Forbid("Only advisors can access availability information");
+                return StatusCode(StatusCodes.Status403Forbidden, "Only advisors can access availability information");
 
             var availabilities = await _availabilityService.GetAvailabilitiesAsync(advisor.Id);
             return Ok(availabilities);

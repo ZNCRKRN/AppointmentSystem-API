@@ -18,6 +18,26 @@ namespace AppointmentSystem.API.Controllers
             _context = context;
         }
 
+        [HttpGet]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<IEnumerable<object>>> GetStudents()
+        {
+            var students = await _context.Students
+                .Select(s => new
+                {
+                    s.Id,
+                    s.FirstName,
+                    s.LastName,
+                    s.Email,
+                    s.StudentNumber,
+                    s.Department,
+                    s.Grade
+                })
+                .ToListAsync();
+
+            return Ok(students);
+        }
+
         [HttpGet("my-profile")]
         public async Task<ActionResult<object>> GetMyProfile()
         {

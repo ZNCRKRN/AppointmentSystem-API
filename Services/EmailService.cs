@@ -16,6 +16,36 @@ namespace AppointmentSystem.API.Services
             _logger = logger;
         }
 
+        public async Task SendAppointmentRequestedAsync(AppointmentResponse appointment, string recipientEmail, string recipientName, bool isAdvisorRecipient)
+        {
+            var subject = "Randevu Talebi Alındı - Appointment System";
+            var intro = isAdvisorRecipient
+                ? "Yeni bir randevu talebi aldınız. Lütfen sistemde onaylayın veya reddedin."
+                : "Randevu talebiniz alınmıştır. Danışman onayı bekleniyor.";
+
+            var body = $@"
+                <html>
+                <body>
+                    <h2>Randevu Talebi</h2>
+                    <p>Merhaba {recipientName},</p>
+                    <p>{intro}</p>
+                    <br>
+                    <h3>Randevu Detayları:</h3>
+                    <ul>
+                        <li><strong>Konu:</strong> {appointment.Subject}</li>
+                        <li><strong>Tarih:</strong> {appointment.StartTime:dd MMMM yyyy, dddd}</li>
+                        <li><strong>Saat:</strong> {appointment.StartTime:HH:mm} - {appointment.EndTime:HH:mm}</li>
+                        <li><strong>Danışman:</strong> {appointment.AdvisorName}</li>
+                        <li><strong>Öğrenci:</strong> {appointment.StudentName}</li>
+                    </ul>
+                    <br>
+                    <p>Appointment System Ekibi</p>
+                </body>
+                </html>";
+
+            await SendEmailAsync(recipientEmail, recipientName, subject, body);
+        }
+
         public async Task SendAppointmentConfirmationAsync(AppointmentResponse appointment, string recipientEmail, string recipientName)
         {
             var subject = "Randevu Onaylandı - Appointment System";
@@ -53,7 +83,7 @@ namespace AppointmentSystem.API.Services
                 <body>
                     <h2>Randevu Hatırlatması</h2>
                     <p>Merhaba {recipientName},</p>
-                    <p>Yarın saat {appointment.StartTime:HH:mm}'de randevunuz bulunmaktadır.</p>
+                    <p>{appointment.StartTime:dd MMMM yyyy, dddd} günü saat {appointment.StartTime:HH:mm}'de randevunuz bulunmaktadır.</p>
                     <br>
                     <h3>Randevu Detayları:</h3>
                     <ul>
@@ -131,7 +161,8 @@ namespace AppointmentSystem.API.Services
         public async Task SendPasswordResetEmailAsync(string email, string resetToken)
         {
             var subject = "Şifre Sıfırlama - Appointment System";
-            var resetUrl = $"{_configuration["FrontendUrl"]}/reset-password?token={resetToken}";
+            // Identity's reset needs both the account email and the token
+            var resetUrl = $"{_configuration["FrontendUrl"]}/reset-password?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(resetToken)}";
             
             var body = $@"
                 <html>
@@ -157,11 +188,11 @@ namespace AppointmentSystem.API.Services
             try
             {
                 var emailSettings = _configuration.GetSection("Email");
-                var smtpServer = emailSettings["SmtpServer"];
+                var smtpServer = emailSettings["SmtpServer"] ?? throw new InvalidOperationException("Email:SmtpServer is not configured");
                 var smtpPort = int.Parse(emailSettings["SmtpPort"] ?? "587");
-                var smtpUsername = emailSettings["SmtpUsername"];
-                var smtpPassword = emailSettings["SmtpPassword"];
-                var fromEmail = emailSettings["FromEmail"];
+                var smtpUsername = emailSettings["SmtpUsername"] ?? throw new InvalidOperationException("Email:SmtpUsername is not configured");
+                var smtpPassword = emailSettings["SmtpPassword"] ?? throw new InvalidOperationException("Email:SmtpPassword is not configured");
+                var fromEmail = emailSettings["FromEmail"] ?? throw new InvalidOperationException("Email:FromEmail is not configured");
                 var fromName = emailSettings["FromName"];
 
                 var message = new MimeMessage();
@@ -175,7 +206,11 @@ namespace AppointmentSystem.API.Services
                 };
                 message.Body = bodyBuilder.ToMessageBody();
 
-                using var client = new SmtpClient();
+                using var client = new SmtpClient
+                {
+                    // Emails are sent inline during requests; cap the wait so an unreachable SMTP server cannot stall the API
+                    Timeout = 10_000
+                };
                 await client.ConnectAsync(smtpServer, smtpPort, SecureSocketOptions.StartTls);
                 await client.AuthenticateAsync(smtpUsername, smtpPassword);
                 await client.SendAsync(message);

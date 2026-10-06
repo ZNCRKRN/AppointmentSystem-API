@@ -130,6 +130,22 @@ namespace AppointmentSystem.API.Controllers
 
             return Ok(new { message = "Appointment confirmed successfully" });
         }
+
+        [HttpPost("{id}/complete")]
+        public async Task<ActionResult> CompleteAppointment(int id)
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
+
+            if (userId == null || userRole == null)
+                return Unauthorized();
+
+            var result = await _appointmentService.CompleteAppointmentAsync(id, userId, userRole);
+            if (!result)
+                return NotFound("Appointment not found, not confirmed yet, or you don't have permission to complete it");
+
+            return Ok(new { message = "Appointment completed successfully" });
+        }
     }
 }
 

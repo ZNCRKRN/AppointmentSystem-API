@@ -40,6 +40,9 @@ namespace AppointmentSystem.API.Models
         
         // Soft delete property
         public bool IsActive { get; set; } = true;
+
+        // Set once the reminder email has gone out, so each appointment is reminded only once
+        public DateTime? ReminderSentAt { get; set; }
         
         // Navigation properties
         public virtual Advisor Advisor { get; set; } = null!;

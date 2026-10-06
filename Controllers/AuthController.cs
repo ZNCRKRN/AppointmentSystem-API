@@ -43,6 +43,40 @@ namespace AppointmentSystem.API.Controllers
             return Ok(result);
         }
 
+        [HttpPost("forgot-password")]
+        public async Task<ActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            await _authService.ForgotPasswordAsync(request.Email);
+
+            // Same answer for known and unknown emails
+            return Ok(new { message = "If an account exists for this email, a reset link has been sent." });
+        }
+
+        [HttpPost("reset-password")]
+        public async Task<ActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var result = await _authService.ResetPasswordAsync(request);
+            if (result == null)
+                return BadRequest("Bağlantı geçersiz veya süresi dolmuş.");
+
+            if (!result.Succeeded)
+            {
+                // Identity reports a bad or expired token with the InvalidToken code; anything else is a password rule
+                if (result.Errors.Any(e => e.Code == "InvalidToken"))
+                    return BadRequest("Bağlantı geçersiz veya süresi dolmuş.");
+
+                return BadRequest("Şifre gereksinimleri karşılanmıyor: " + string.Join(" ", result.Errors.Select(e => e.Description)));
+            }
+
+            return Ok(new { message = "Password has been reset. You can now log in." });
+        }
+
         [HttpGet("me")]
         [Authorize]
         public async Task<ActionResult<UserInfo>> GetCurrentUser()

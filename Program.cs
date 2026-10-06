@@ -99,6 +99,11 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IAppointmentService, AppointmentService>();
 builder.Services.AddScoped<IAvailabilityService, AvailabilityService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<IReminderService, ReminderService>();
+
+// Reminders run on a timer in normal operation; tests call the service directly instead
+if (!builder.Environment.IsEnvironment("Testing"))
+    builder.Services.AddHostedService<ReminderBackgroundService>();
 
 // CORS
 builder.Services.AddCors(options =>
@@ -222,3 +227,6 @@ async Task SeedDataAsync(AppointmentDbContext context, UserManager<IdentityUser>
 
     await context.SaveChangesAsync();
 }
+
+// Exposes the entry point to the test project (WebApplicationFactory<Program>)
+public partial class Program { }

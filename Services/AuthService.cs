@@ -66,38 +66,51 @@ namespace AppointmentSystem.API.Services
             if (!result.Succeeded)
                 return null;
 
-            await _userManager.AddToRoleAsync(user, request.Role);
-
-            // Create profile based on role
-            if (request.Role == "Student")
+            // Identity user and profile are separate writes; if either fails, remove the identity user
+            // so a failed registration does not leave an account without a profile behind.
+            try
             {
-                var student = new Student
-                {
-                    UserId = user.Id,
-                    FirstName = request.FirstName,
-                    LastName = request.LastName,
-                    Email = request.Email,
-                    StudentNumber = request.StudentNumber ?? "",
-                    Department = request.Department ?? "",
-                    Grade = request.Grade
-                };
-                _context.Students.Add(student);
-            }
-            else if (request.Role == "Advisor")
-            {
-                var advisor = new Advisor
-                {
-                    UserId = user.Id,
-                    FirstName = request.FirstName,
-                    LastName = request.LastName,
-                    Email = request.Email,
-                    Department = request.Department ?? "",
-                    Specialization = request.Specialization
-                };
-                _context.Advisors.Add(advisor);
-            }
+                var roleResult = await _userManager.AddToRoleAsync(user, request.Role);
+                if (!roleResult.Succeeded)
+                    throw new InvalidOperationException("Could not assign role");
 
-            await _context.SaveChangesAsync();
+                if (request.Role == "Student")
+                {
+                    _context.Students.Add(new Student
+                    {
+                        UserId = user.Id,
+                        FirstName = request.FirstName,
+                        LastName = request.LastName,
+                        Email = request.Email,
+                        StudentNumber = request.StudentNumber ?? "",
+                        Department = request.Department ?? "",
+                        Grade = request.Grade
+                    });
+                }
+                else
+                {
+                    _context.Advisors.Add(new Advisor
+                    {
+                        UserId = user.Id,
+                        FirstName = request.FirstName,
+                        LastName = request.LastName,
+                        Email = request.Email,
+                        Department = request.Department ?? "",
+                        Specialization = request.Specialization
+                    });
+                }
+
+                await _context.SaveChangesAsync();
+            }
+            catch
+            {
+                // e.g. duplicate student number, or role assignment failure.
+                // Drop the failed profile insert still pending in the change tracker, otherwise the
+                // delete below would re-send it and fail again.
+                _context.ChangeTracker.Clear();
+                await _userManager.DeleteAsync(user);
+                return null;
+            }
 
             var roles = await _userManager.GetRolesAsync(user);
             var token = _jwtService.GenerateToken(user.Id, user.Email!, roles);
@@ -122,6 +135,35 @@ namespace AppointmentSystem.API.Services
                 Expiration = DateTime.UtcNow.AddHours(24),
                 User = userInfo
             };
+        }
+
+        public async Task ForgotPasswordAsync(string email)
+        {
+            var user = await _userManager.FindByEmailAsync(email);
+
+            // Callers get the same response whether or not the account exists, so this cannot be used to probe emails
+            if (user == null)
+                return;
+
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+
+            try
+            {
+                await _emailService.SendPasswordResetEmailAsync(user.Email!, token);
+            }
+            catch
+            {
+                // Failure is logged by EmailService; the response stays generic
+            }
+        }
+
+        public async Task<IdentityResult?> ResetPasswordAsync(ResetPasswordRequest request)
+        {
+            var user = await _userManager.FindByEmailAsync(request.Email);
+            if (user == null)
+                return null;
+
+            return await _userManager.ResetPasswordAsync(user, request.Token, request.NewPassword);
         }
 
         public async Task<UserInfo?> GetUserInfoAsync(string userId)

@@ -143,17 +143,21 @@ namespace AppointmentSystem.API.Services
 
             // Get specific date availabilities
             var specificAvailabilities = await _context.Availabilities
-                .Where(a => a.AdvisorId == request.AdvisorId && 
-                           a.SpecificDate.HasValue && 
+                .Where(a => a.AdvisorId == request.AdvisorId &&
+                           !a.IsRecurring &&
+                           a.SpecificDate.HasValue &&
                            a.SpecificDate.Value.Date == request.Date.Date)
                 .ToListAsync();
 
-            // Get existing appointments for this date
+            // Get existing appointments for this date (soft-deleted ones must not block slots)
             var existingAppointments = await _context.Appointments
-                .Where(a => a.AdvisorId == request.AdvisorId && 
+                .Where(a => a.AdvisorId == request.AdvisorId &&
+                           a.IsActive &&
                            a.StartTime.Date == request.Date.Date &&
                            a.Status != "Cancelled")
                 .ToListAsync();
+
+            var now = DateTime.Now;
 
             // Combine all availabilities
             var allAvailabilities = recurringAvailabilities.Concat(specificAvailabilities);
@@ -167,7 +171,14 @@ namespace AppointmentSystem.API.Services
                 while (currentTime.AddMinutes(request.DurationMinutes) <= endDateTime)
                 {
                     var slotEndTime = currentTime.AddMinutes(request.DurationMinutes);
-                    
+
+                    // Past slots are not bookable, so they are not offered
+                    if (currentTime < now)
+                    {
+                        currentTime = currentTime.AddMinutes(15);
+                        continue;
+                    }
+
                     // Check if this slot conflicts with existing appointments
                     var hasConflict = existingAppointments.Any(apt => 
                         (apt.StartTime < slotEndTime && apt.EndTime > currentTime));

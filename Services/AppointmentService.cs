@@ -27,16 +27,11 @@ namespace AppointmentSystem.API.Services
             if (student == null)
                 return null;
 
-            // Check for conflicts
-            var hasConflict = await _context.Appointments
-                .AnyAsync(a => a.AdvisorId == request.AdvisorId &&
-                              a.IsActive &&
-                              a.Status != "Cancelled" &&
-                              ((a.StartTime <= request.StartTime && a.EndTime > request.StartTime) ||
-                               (a.StartTime < request.EndTime && a.EndTime >= request.EndTime) ||
-                               (a.StartTime >= request.StartTime && a.EndTime <= request.EndTime)));
+            // Students may only book inside the advisor's availability
+            if (!await IsWithinAvailabilityAsync(request.AdvisorId, request.StartTime, request.EndTime))
+                return null;
 
-            if (hasConflict)
+            if (await HasConflictAsync(request.AdvisorId, request.StartTime, request.EndTime, excludeAppointmentId: null))
                 return null;
 
             var appointment = new Models.Appointment
@@ -56,13 +51,13 @@ namespace AppointmentSystem.API.Services
 
             var result = await GetAppointmentAsync(appointment.Id, studentId, "Student");
             
-            // Send confirmation emails
+            // Request emails: the advisor must still confirm, so nothing is "confirmed" yet
             if (result != null)
             {
                 try
                 {
-                    await _emailService.SendAppointmentConfirmationAsync(result, advisor.Email, $"{advisor.FirstName} {advisor.LastName}");
-                    await _emailService.SendAppointmentConfirmationAsync(result, student.Email, $"{student.FirstName} {student.LastName}");
+                    await _emailService.SendAppointmentRequestedAsync(result, advisor.Email, $"{advisor.FirstName} {advisor.LastName}", isAdvisorRecipient: true);
+                    await _emailService.SendAppointmentRequestedAsync(result, student.Email, $"{student.FirstName} {student.LastName}", isAdvisorRecipient: false);
                 }
                 catch
                 {
@@ -89,17 +84,25 @@ namespace AppointmentSystem.API.Services
             if (userRole == "Advisor" && appointment.Advisor.UserId != userId)
                 return null;
 
+            var newStart = request.StartTime ?? appointment.StartTime;
+            var newEnd = request.EndTime ?? appointment.EndTime;
+
+            // Rescheduling must not overlap another active appointment of the same advisor
+            if (newStart != appointment.StartTime || newEnd != appointment.EndTime)
+            {
+                if (!await IsWithinAvailabilityAsync(appointment.AdvisorId, newStart, newEnd))
+                    return null;
+                if (await HasConflictAsync(appointment.AdvisorId, newStart, newEnd, excludeAppointmentId: appointment.Id))
+                    return null;
+            }
+
             // Update fields
             if (!string.IsNullOrEmpty(request.Subject))
                 appointment.Subject = request.Subject;
             if (request.Description != null)
                 appointment.Description = request.Description;
-            if (request.StartTime.HasValue)
-                appointment.StartTime = request.StartTime.Value;
-            if (request.EndTime.HasValue)
-                appointment.EndTime = request.EndTime.Value;
-            if (!string.IsNullOrEmpty(request.Status))
-                appointment.Status = request.Status;
+            appointment.StartTime = newStart;
+            appointment.EndTime = newEnd;
             if (!string.IsNullOrEmpty(request.AppointmentType))
                 appointment.AppointmentType = request.AppointmentType;
             if (request.Notes != null)
@@ -209,11 +212,14 @@ namespace AppointmentSystem.API.Services
             if (request.EndDate.HasValue)
                 query = query.Where(a => a.StartTime <= request.EndDate.Value);
 
-            // Apply pagination
+            // Apply pagination (bounded so a client cannot request an unbounded page)
+            var page = Math.Max(1, request.Page);
+            var pageSize = Math.Clamp(request.PageSize, 1, 100);
+
             var appointments = await query
                 .OrderBy(a => a.StartTime)
-                .Skip((request.Page - 1) * request.PageSize)
-                .Take(request.PageSize)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
                 .ToListAsync();
 
             return appointments.Select(a => new AppointmentResponse
@@ -251,6 +257,10 @@ namespace AppointmentSystem.API.Services
             if (userRole == "Advisor" && appointment.Advisor.UserId != userId)
                 return false;
 
+            // A finished appointment is history and cannot be cancelled
+            if (appointment.Status == "Completed")
+                return false;
+
             appointment.Status = "Cancelled";
             appointment.UpdatedAt = DateTime.UtcNow;
 
@@ -283,8 +293,10 @@ namespace AppointmentSystem.API.Services
             if (appointment == null)
                 return false;
 
-            // Only advisors can confirm appointments
+            // Only advisors can confirm appointments, and only ones still waiting for a decision
             if (userRole != "Advisor" || appointment.Advisor.UserId != userId)
+                return false;
+            if (appointment.Status != "Scheduled")
                 return false;
 
             appointment.Status = "Confirmed";
@@ -308,6 +320,63 @@ namespace AppointmentSystem.API.Services
             }
 
             return true;
+        }
+
+        public async Task<bool> CompleteAppointmentAsync(int appointmentId, string userId, string userRole)
+        {
+            var appointment = await _context.Appointments
+                .Include(a => a.Advisor)
+                .FirstOrDefaultAsync(a => a.Id == appointmentId && a.IsActive);
+
+            if (appointment == null)
+                return false;
+
+            // Only the advisor of a confirmed appointment can mark it as completed
+            if (userRole != "Advisor" || appointment.Advisor.UserId != userId)
+                return false;
+            if (appointment.Status != "Confirmed")
+                return false;
+
+            appointment.Status = "Completed";
+            appointment.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return true;
+        }
+
+        // The whole slot must sit inside one availability window (recurring weekday or one-time date)
+        private async Task<bool> IsWithinAvailabilityAsync(int advisorId, DateTime start, DateTime end)
+        {
+            if (end.Date != start.Date)
+                return false;
+
+            var day = start.DayOfWeek;
+            var date = start.Date;
+            var from = start.TimeOfDay;
+            var to = end.TimeOfDay;
+
+            // Filtered in memory: an advisor has few availability rows, and TimeSpan comparisons
+            // do not translate to every provider (e.g. SQLite)
+            var windows = await _context.Availabilities
+                .Where(a => a.AdvisorId == advisorId)
+                .ToListAsync();
+
+            return windows.Any(a =>
+                ((a.IsRecurring && a.DayOfWeek == day) ||
+                 (!a.IsRecurring && a.SpecificDate.HasValue && a.SpecificDate.Value.Date == date)) &&
+                a.StartTime <= from && a.EndTime >= to);
+        }
+
+        private async Task<bool> HasConflictAsync(int advisorId, DateTime start, DateTime end, int? excludeAppointmentId)
+        {
+            return await _context.Appointments
+                .AnyAsync(a => a.AdvisorId == advisorId &&
+                              a.IsActive &&
+                              a.Status != "Cancelled" &&
+                              (excludeAppointmentId == null || a.Id != excludeAppointmentId) &&
+                              a.StartTime < end &&
+                              a.EndTime > start);
         }
     }
 }
