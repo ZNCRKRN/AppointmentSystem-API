@@ -19,6 +19,20 @@ namespace AppointmentSystem.API.Services
             if (advisor == null)
                 return null;
 
+            return await CreateAvailabilityForAdvisorAsync(request, advisor);
+        }
+
+        public async Task<AvailabilityResponse?> CreateAvailabilityForAdvisorAsync(CreateAvailabilityRequest request, int advisorId)
+        {
+            var advisor = await _context.Advisors.FindAsync(advisorId);
+            if (advisor == null)
+                return null;
+
+            return await CreateAvailabilityForAdvisorAsync(request, advisor);
+        }
+
+        private async Task<AvailabilityResponse> CreateAvailabilityForAdvisorAsync(CreateAvailabilityRequest request, Models.Advisor advisor)
+        {
             var availability = new Models.Availability
             {
                 AdvisorId = advisor.Id,
@@ -179,12 +193,12 @@ namespace AppointmentSystem.API.Services
                     // Past slots are not bookable, so they are not offered
                     if (currentTime < now)
                     {
-                        currentTime = currentTime.AddMinutes(15);
+                        currentTime = currentTime.AddMinutes(request.DurationMinutes);
                         continue;
                     }
 
                     // Check if this slot conflicts with existing appointments
-                    var hasConflict = existingAppointments.Any(apt => 
+                    var hasConflict = existingAppointments.Any(apt =>
                         (apt.StartTime < slotEndTime && apt.EndTime > currentTime));
 
                     slots.Add(new AvailableSlot
@@ -194,7 +208,9 @@ namespace AppointmentSystem.API.Services
                         IsAvailable = !hasConflict
                     });
 
-                    currentTime = currentTime.AddMinutes(15); // 15-minute intervals
+                    // Step by the appointment length so slots sit back-to-back (e.g. on the hour)
+                    // instead of overlapping every 15 minutes regardless of how long the appointment is.
+                    currentTime = currentTime.AddMinutes(request.DurationMinutes);
                 }
             }
 

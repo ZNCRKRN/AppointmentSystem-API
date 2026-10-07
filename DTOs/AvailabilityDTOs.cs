@@ -16,6 +16,9 @@ namespace AppointmentSystem.API.DTOs
         public bool IsRecurring { get; set; } = true;
         public DateTime? SpecificDate { get; set; }
 
+        // Set by an Admin to create availability on behalf of a specific advisor; ignored otherwise
+        public int? AdvisorId { get; set; }
+
         public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
         {
             if (EndTime <= StartTime)

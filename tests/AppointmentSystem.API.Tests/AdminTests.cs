@@ -157,4 +157,51 @@ public class AdminTests
         var delete = await client.DeleteAsync($"/api/Availability/{availabilityId}");
         Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
     }
+
+    [Fact]
+    public async Task Admin_CanCreateAvailabilityForAdvisor()
+    {
+        using var factory = new ApiFactory();
+        using var client = factory.CreateApiClient();
+
+        var advisorToken = await ApiFactory.LoginAsync(client, "advisor@appointmentsystem.com", "Advisor123!");
+        var adminToken = await ApiFactory.LoginAsync(client, "admin@appointmentsystem.com", "Admin123!");
+
+        ApiFactory.Authenticate(client, advisorToken);
+        var advisorId = await ApiFactory.GetProfileIdAsync(client, "/api/Advisor/my-profile");
+
+        ApiFactory.Authenticate(client, adminToken);
+        var created = await client.PostAsJsonAsync("/api/Availability", new
+        {
+            advisorId,
+            dayOfWeek = (int)DayOfWeek.Friday,
+            startTime = "09:00:00",
+            endTime = "12:00:00",
+            isRecurring = true
+        });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+
+        var list = await (await client.GetAsync($"/api/Availability/advisor/{advisorId}")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Single(list.EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Admin_CreatingAvailability_WithoutAdvisorId_IsRejected()
+    {
+        using var factory = new ApiFactory();
+        using var client = factory.CreateApiClient();
+
+        var adminToken = await ApiFactory.LoginAsync(client, "admin@appointmentsystem.com", "Admin123!");
+        ApiFactory.Authenticate(client, adminToken);
+
+        var response = await client.PostAsJsonAsync("/api/Availability", new
+        {
+            dayOfWeek = (int)DayOfWeek.Friday,
+            startTime = "09:00:00",
+            endTime = "12:00:00",
+            isRecurring = true
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
 }

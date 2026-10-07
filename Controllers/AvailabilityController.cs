@@ -32,6 +32,19 @@ namespace AppointmentSystem.API.Controllers
             if (userId == null)
                 return Unauthorized();
 
+            // Admin creates on behalf of a chosen advisor (identified by Advisor.Id, not the advisor's user id)
+            if (User.IsInRole("Admin"))
+            {
+                if (request.AdvisorId == null)
+                    return BadRequest("AdvisorId is required when an admin creates availability.");
+
+                var adminResult = await _availabilityService.CreateAvailabilityForAdvisorAsync(request, request.AdvisorId.Value);
+                if (adminResult == null)
+                    return NotFound("Advisor not found.");
+
+                return CreatedAtAction(nameof(GetAdvisorAvailabilities), new { advisorId = adminResult.AdvisorId }, adminResult);
+            }
+
             var result = await _availabilityService.CreateAvailabilityAsync(request, userId);
             if (result == null)
                 return BadRequest("Failed to create availability. You must be an advisor.");

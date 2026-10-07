@@ -205,6 +205,41 @@ public class AvailabilityAndAccessTests
     }
 
     [Fact]
+    public async Task AvailableSlots_StepByAppointmentLength_NotFixed15Minutes()
+    {
+        var (client, factory, advisorId, _, advisorToken, _) = await SetupAsync();
+        using var _f = factory;
+        using var _c = client;
+
+        var date = NextDayOfWeek(DayOfWeek.Tuesday);
+
+        // Advisor works 09:00-11:00; with 60-minute appointments the slots should be back-to-back
+        // (09:00, 10:00), not overlapping every 15 minutes (09:00, 09:15, 09:30, ...).
+        ApiFactory.Authenticate(client, advisorToken);
+        await client.PostAsJsonAsync("/api/Availability", new
+        {
+            dayOfWeek = (int)DayOfWeek.Tuesday,
+            startTime = "09:00:00",
+            endTime = "11:00:00",
+            isRecurring = true
+        });
+
+        var response = await client.PostAsJsonAsync("/api/Availability/available-slots", new
+        {
+            advisorId,
+            date,
+            durationMinutes = 60
+        });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var starts = (await response.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray()
+            .Select(s => s.GetProperty("startTime").GetDateTime())
+            .ToList();
+
+        Assert.Equal(new[] { date.AddHours(9), date.AddHours(10) }, starts);
+    }
+
+    [Fact]
     public async Task Admin_CanListStudents_StudentCannot()
     {
         var (client, factory, _, studentToken, _, adminToken) = await SetupAsync();
