@@ -14,6 +14,19 @@ Tahmini süre: 20-30 dakika. Her adımda ne yapman gerektiğini ve hangi değeri
 
 ---
 
+## Nerede kaldık (8 Ekim akşamı devam)
+
+- [x] **0) GitHub'a push** — yapıldı, iki repo da `main`'de güncel.
+- [ ] **1) Neon** — henüz hesap/proje açılmadı.
+- [ ] **2) Render** — henüz hesap/servis açılmadı.
+- [ ] **3) Netlify** — henüz hesap/site açılmadı.
+- [ ] **4) Render'a gerçek Netlify adresini girme** — 3'e bağlı.
+- [ ] **5) Doğrulama (demo hesaplarla giriş)** — 1-4'e bağlı.
+
+Kod tarafı (Postgres desteği, Dockerfile, env var'lar, `VITE_API_BASE_URL`, `_redirects`) tamamen hazır ve commit'lendi; kalan her şey Neon/Render/Netlify panellerinde hesap açıp aşağıdaki değerleri yapıştırmaktan ibaret. 1. adımdan devam edilebilir.
+
+---
+
 ## 0) Ön koşul: GitHub'a push
 
 Render ve Netlify, GitHub reponu izleyip her push'ta otomatik deploy eder. Önce yerel commit'lerin GitHub'a gitmiş olması lazım:
