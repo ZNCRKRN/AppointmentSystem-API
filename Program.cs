@@ -10,6 +10,12 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// PaaS hosts like Render assign the port at container start via PORT; Kestrel must bind to it.
+// Unset locally, so local dev keeps using launchSettings.json as before.
+var cloudPort = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrEmpty(cloudPort))
+    builder.WebHost.UseUrls($"http://+:{cloudPort}");
+
 // Configure Serilog
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
@@ -51,8 +57,21 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 // Database
-builder.Services.AddDbContext<AppointmentDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+// "SqlServer" (default) is local dev against LocalDB, using Migrations/. "Postgres" is for a cloud
+// deployment with no free managed SQL Server (e.g. Render + Neon); it uses AppointmentDbContextPostgres
+// and the separate migration set under Migrations/Postgres/ (see that class for why it's separate).
+var dbProvider = builder.Configuration["Database:Provider"] ?? "SqlServer";
+if (dbProvider == "Postgres")
+{
+    builder.Services.AddDbContext<AppointmentDbContextPostgres>(options =>
+        options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    builder.Services.AddScoped<AppointmentDbContext>(sp => sp.GetRequiredService<AppointmentDbContextPostgres>());
+}
+else
+{
+    builder.Services.AddDbContext<AppointmentDbContext>(options =>
+        options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+}
 
 // Identity
 builder.Services.AddIdentity<IdentityUser, IdentityRole>(options =>
@@ -106,11 +125,20 @@ if (!builder.Environment.IsEnvironment("Testing"))
     builder.Services.AddHostedService<ReminderBackgroundService>();
 
 // CORS
+// Deployed frontend origins go in Cors:AllowedOriginsCsv (comma-separated, e.g. a Render/Netlify env
+// var) so the allowed list can change without a code change; local dev origins are always included.
+var configuredOrigins = (builder.Configuration["Cors:AllowedOriginsCsv"] ?? "")
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+var allowedOrigins = new[] { "http://localhost:3000", "http://localhost:5173" }
+    .Concat(configuredOrigins)
+    .Distinct()
+    .ToArray();
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowReactApp", policy =>
     {
-        policy.WithOrigins("http://localhost:3000", "http://localhost:5173")
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
@@ -133,13 +161,24 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// Seed data
+// Simple liveness check: lets a host's health check (e.g. Render) get a 200 without hitting a real
+// endpoint, and gives anyone opening the bare API URL something other than a 404.
+app.MapGet("/", () => Results.Ok("Appointment System API is running."));
+
+// Migrate + seed data
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<AppointmentDbContext>();
+
+    // Local dev (SQL Server/LocalDB) keeps applying migrations manually via `dotnet ef database
+    // update`, as documented in the README. A Postgres deployment has no interactive shell for that,
+    // so it applies pending migrations on startup instead.
+    if (dbProvider == "Postgres")
+        await context.Database.MigrateAsync();
+
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-    
+
     await SeedDataAsync(context, userManager, roleManager);
 }
 

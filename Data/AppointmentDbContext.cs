@@ -6,7 +6,9 @@ namespace AppointmentSystem.API.Data
 {
     public class AppointmentDbContext : IdentityDbContext
     {
-        public AppointmentDbContext(DbContextOptions<AppointmentDbContext> options) : base(options)
+        // Non-generic DbContextOptions (not DbContextOptions<AppointmentDbContext>) so
+        // AppointmentDbContextPostgres can pass its own options through to this base constructor.
+        public AppointmentDbContext(DbContextOptions options) : base(options)
         {
         }
 

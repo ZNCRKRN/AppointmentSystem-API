@@ -78,3 +78,10 @@ Schema changes go through EF Core migrations:
 dotnet ef migrations add <Name>
 dotnet ef database update
 ```
+
+## Deployment
+
+Local development always uses SQL Server LocalDB above. For a live deployment with no managed SQL
+Server available (e.g. a free-tier host), the app can run against PostgreSQL instead via
+`Database:Provider=Postgres` — see [DEPLOYMENT.md](DEPLOYMENT.md) for the full step-by-step (Neon +
+Render + Netlify, all free tiers).
