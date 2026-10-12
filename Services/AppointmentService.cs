@@ -31,11 +31,14 @@ namespace AppointmentSystem.API.Services
             if (student == null)
                 return null;
 
+            var startTime = AsUtc(request.StartTime);
+            var endTime = AsUtc(request.EndTime);
+
             // Students may only book inside the advisor's availability
-            if (!await IsWithinAvailabilityAsync(request.AdvisorId, request.StartTime, request.EndTime))
+            if (!await IsWithinAvailabilityAsync(request.AdvisorId, startTime, endTime))
                 return null;
 
-            if (await HasConflictAsync(request.AdvisorId, request.StartTime, request.EndTime, excludeAppointmentId: null))
+            if (await HasConflictAsync(request.AdvisorId, startTime, endTime, excludeAppointmentId: null))
                 return null;
 
             var appointment = new Models.Appointment
@@ -44,8 +47,8 @@ namespace AppointmentSystem.API.Services
                 StudentId = student.Id,
                 Subject = request.Subject,
                 Description = request.Description,
-                StartTime = AsUtc(request.StartTime),
-                EndTime = AsUtc(request.EndTime),
+                StartTime = startTime,
+                EndTime = endTime,
                 Status = "Scheduled",
                 AppointmentType = request.AppointmentType
             };
@@ -212,9 +215,9 @@ namespace AppointmentSystem.API.Services
             if (!string.IsNullOrEmpty(request.Status))
                 query = query.Where(a => a.Status == request.Status);
             if (request.StartDate.HasValue)
-                query = query.Where(a => a.StartTime >= request.StartDate.Value);
+                query = query.Where(a => a.StartTime >= AsUtc(request.StartDate.Value));
             if (request.EndDate.HasValue)
-                query = query.Where(a => a.StartTime <= request.EndDate.Value);
+                query = query.Where(a => a.StartTime <= AsUtc(request.EndDate.Value));
 
             // Apply pagination (bounded so a client cannot request an unbounded page)
             var page = Math.Max(1, request.Page);

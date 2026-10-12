@@ -153,13 +153,17 @@ namespace AppointmentSystem.API.Services
             if (advisor == null)
                 return Enumerable.Empty<AvailableSlot>();
 
-            var dayOfWeek = request.Date.DayOfWeek;
+            // Npgsql requires Kind=Utc to compare against timestamptz columns; request.Date
+            // deserializes from the request body as Kind=Unspecified.
+            var requestDate = DateTime.SpecifyKind(request.Date, DateTimeKind.Utc);
+
+            var dayOfWeek = requestDate.DayOfWeek;
             var slots = new List<AvailableSlot>();
 
             // Get recurring availabilities for this day of week
             var recurringAvailabilities = await _context.Availabilities
-                .Where(a => a.AdvisorId == request.AdvisorId && 
-                           a.DayOfWeek == dayOfWeek && 
+                .Where(a => a.AdvisorId == request.AdvisorId &&
+                           a.DayOfWeek == dayOfWeek &&
                            a.IsRecurring)
                 .ToListAsync();
 
@@ -168,14 +172,14 @@ namespace AppointmentSystem.API.Services
                 .Where(a => a.AdvisorId == request.AdvisorId &&
                            !a.IsRecurring &&
                            a.SpecificDate.HasValue &&
-                           a.SpecificDate.Value.Date == request.Date.Date)
+                           a.SpecificDate.Value.Date == requestDate.Date)
                 .ToListAsync();
 
             // Get existing appointments for this date (soft-deleted ones must not block slots)
             var existingAppointments = await _context.Appointments
                 .Where(a => a.AdvisorId == request.AdvisorId &&
                            a.IsActive &&
-                           a.StartTime.Date == request.Date.Date &&
+                           a.StartTime.Date == requestDate.Date &&
                            a.Status != "Cancelled")
                 .ToListAsync();
 
