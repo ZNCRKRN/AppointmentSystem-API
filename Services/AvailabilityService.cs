@@ -40,7 +40,11 @@ namespace AppointmentSystem.API.Services
                 StartTime = request.StartTime,
                 EndTime = request.EndTime,
                 IsRecurring = request.IsRecurring,
-                SpecificDate = request.SpecificDate
+                // Npgsql requires Kind=Utc for timestamptz columns; a date from the request body
+                // deserializes as Kind=Unspecified.
+                SpecificDate = request.SpecificDate.HasValue
+                    ? DateTime.SpecifyKind(request.SpecificDate.Value, DateTimeKind.Utc)
+                    : null
             };
 
             _context.Availabilities.Add(availability);
@@ -79,7 +83,7 @@ namespace AppointmentSystem.API.Services
             if (request.IsRecurring.HasValue)
                 availability.IsRecurring = request.IsRecurring.Value;
             if (request.SpecificDate.HasValue)
-                availability.SpecificDate = request.SpecificDate.Value;
+                availability.SpecificDate = DateTime.SpecifyKind(request.SpecificDate.Value, DateTimeKind.Utc);
 
             availability.UpdatedAt = DateTime.UtcNow;
 

@@ -15,6 +15,10 @@ namespace AppointmentSystem.API.Services
             _emailService = emailService;
         }
 
+        // Npgsql requires Kind=Utc for timestamptz columns; a DateTime from a request body
+        // deserializes as Kind=Unspecified.
+        private static DateTime AsUtc(DateTime dateTime) => DateTime.SpecifyKind(dateTime, DateTimeKind.Utc);
+
         public async Task<AppointmentResponse?> CreateAppointmentAsync(CreateAppointmentRequest request, string studentId)
         {
             // Validate advisor exists
@@ -40,8 +44,8 @@ namespace AppointmentSystem.API.Services
                 StudentId = student.Id,
                 Subject = request.Subject,
                 Description = request.Description,
-                StartTime = request.StartTime,
-                EndTime = request.EndTime,
+                StartTime = AsUtc(request.StartTime),
+                EndTime = AsUtc(request.EndTime),
                 Status = "Scheduled",
                 AppointmentType = request.AppointmentType
             };
@@ -84,8 +88,8 @@ namespace AppointmentSystem.API.Services
             if (userRole == "Advisor" && appointment.Advisor.UserId != userId)
                 return null;
 
-            var newStart = request.StartTime ?? appointment.StartTime;
-            var newEnd = request.EndTime ?? appointment.EndTime;
+            var newStart = request.StartTime.HasValue ? AsUtc(request.StartTime.Value) : appointment.StartTime;
+            var newEnd = request.EndTime.HasValue ? AsUtc(request.EndTime.Value) : appointment.EndTime;
 
             // Rescheduling must not overlap another active appointment of the same advisor
             if (newStart != appointment.StartTime || newEnd != appointment.EndTime)
