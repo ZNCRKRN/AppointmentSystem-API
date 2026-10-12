@@ -8,6 +8,11 @@ using Microsoft.OpenApi.Models;
 using Serilog;
 using System.Text;
 
+// Npgsql 6+ requires DateTime.Kind=Utc for timestamp columns by default; request bodies deserialize
+// dates (e.g. a one-time availability's SpecificDate) as Kind=Unspecified, which otherwise throws at
+// save time. This restores the pre-6.0 lenient behavior. SQL Server (local dev) never had this restriction.
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+
 var builder = WebApplication.CreateBuilder(args);
 
 // PaaS hosts like Render assign the port at container start via PORT; Kestrel must bind to it.
