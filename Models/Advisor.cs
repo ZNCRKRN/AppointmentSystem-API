@@ -28,7 +28,11 @@ namespace AppointmentSystem.API.Models
         
         [MaxLength(200)]
         public string? Specialization { get; set; }
-        
+
+        // A self-registered advisor starts unapproved and cannot log in until an admin approves
+        // them; one created by seeding or by an admin is approved by default.
+        public bool IsApproved { get; set; } = true;
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
         

@@ -23,7 +23,16 @@ namespace AppointmentSystem.API.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            var result = await _authService.LoginAsync(request);
+            AuthResponse? result;
+            try
+            {
+                result = await _authService.LoginAsync(request);
+            }
+            catch (AdvisorPendingApprovalException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, ex.Message);
+            }
+
             if (result == null)
                 return Unauthorized("Invalid email or password");
 
@@ -36,7 +45,16 @@ namespace AppointmentSystem.API.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            var result = await _authService.RegisterAsync(request);
+            AuthResponse? result;
+            try
+            {
+                result = await _authService.RegisterAsync(request);
+            }
+            catch (AdvisorPendingApprovalException ex)
+            {
+                return Ok(new { pending = true, message = ex.Message });
+            }
+
             if (result == null)
                 return BadRequest("Registration failed. Email may already exist.");
 

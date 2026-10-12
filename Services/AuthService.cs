@@ -39,6 +39,14 @@ namespace AppointmentSystem.API.Services
                 return null;
 
             var roles = await _userManager.GetRolesAsync(user);
+
+            if (roles.Contains("Advisor"))
+            {
+                var advisor = await _context.Advisors.FirstOrDefaultAsync(a => a.UserId == user.Id);
+                if (advisor != null && !advisor.IsApproved)
+                    throw new AdvisorPendingApprovalException("Danışman hesabınız henüz bir yönetici tarafından onaylanmadı.");
+            }
+
             var token = _jwtService.GenerateToken(user.Id, user.Email!, roles);
 
             var userInfo = await GetUserInfoAsync(user.Id);
@@ -96,7 +104,9 @@ namespace AppointmentSystem.API.Services
                         LastName = request.LastName,
                         Email = request.Email,
                         Department = request.Department ?? "",
-                        Specialization = request.Specialization
+                        Specialization = request.Specialization,
+                        // A self-registered advisor must be approved by an admin before they can log in
+                        IsApproved = false
                     });
                 }
 
@@ -111,6 +121,11 @@ namespace AppointmentSystem.API.Services
                 await _userManager.DeleteAsync(user);
                 return null;
             }
+
+            // The account and profile are created, but a self-registered advisor gets no session
+            // until an admin approves them.
+            if (request.Role == "Advisor")
+                throw new AdvisorPendingApprovalException("Kaydınız alındı. Danışman hesabınız bir yöneticinin onayını bekliyor; onaylandıktan sonra giriş yapabilirsiniz.");
 
             var roles = await _userManager.GetRolesAsync(user);
             var token = _jwtService.GenerateToken(user.Id, user.Email!, roles);

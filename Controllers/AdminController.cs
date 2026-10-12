@@ -7,7 +7,7 @@ using System.Security.Claims;
 
 namespace AppointmentSystem.API.Controllers
 {
-    public record UserRow(string Id, string Email, string Role, string FirstName, string LastName, string? Department);
+    public record UserRow(string Id, string Email, string Role, string FirstName, string LastName, string? Department, bool? IsApproved);
 
     [ApiController]
     [Route("api/[controller]")]
@@ -43,10 +43,26 @@ namespace AppointmentSystem.API.Controllers
                     role,
                     student?.FirstName ?? advisor?.FirstName ?? "",
                     student?.LastName ?? advisor?.LastName ?? "",
-                    student?.Department ?? advisor?.Department));
+                    student?.Department ?? advisor?.Department,
+                    advisor?.IsApproved));
             }
 
             return Ok(result.OrderBy(u => u.Role).ThenBy(u => u.Email));
+        }
+
+        // Approves a self-registered advisor so they can log in
+        [HttpPost("users/{id}/approve-advisor")]
+        public async Task<ActionResult> ApproveAdvisor(string id)
+        {
+            var advisor = await _context.Advisors.FirstOrDefaultAsync(a => a.UserId == id);
+            if (advisor == null)
+                return NotFound("Danışman bulunamadı.");
+
+            advisor.IsApproved = true;
+            advisor.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return NoContent();
         }
 
         // Deletes an account together with its profile, its appointments and (for advisors) its availability.

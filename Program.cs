@@ -179,12 +179,15 @@ using (var scope = app.Services.CreateScope())
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
 
-    await SeedDataAsync(context, userManager, roleManager);
+    // The demo advisor/student accounts are only useful for local dev and the test suite
+    // (which runs under the "Testing" environment); a real deployment must not keep recreating
+    // publicly-known demo credentials every time it restarts.
+    await SeedDataAsync(context, userManager, roleManager, seedDemoAdvisorAndStudent: !app.Environment.IsProduction());
 }
 
 app.Run();
 
-async Task SeedDataAsync(AppointmentDbContext context, UserManager<IdentityUser> userManager, RoleManager<IdentityRole> roleManager)
+async Task SeedDataAsync(AppointmentDbContext context, UserManager<IdentityUser> userManager, RoleManager<IdentityRole> roleManager, bool seedDemoAdvisorAndStudent)
 {
     // Create roles
     var roles = new[] { "Admin", "Advisor", "Student" };
@@ -211,57 +214,60 @@ async Task SeedDataAsync(AppointmentDbContext context, UserManager<IdentityUser>
         await userManager.AddToRoleAsync(adminUser, "Admin");
     }
 
-    // Create sample advisor
-    var advisorEmail = "advisor@appointmentsystem.com";
-    var advisorUser = await userManager.FindByEmailAsync(advisorEmail);
-    if (advisorUser == null)
+    if (seedDemoAdvisorAndStudent)
     {
-        advisorUser = new IdentityUser
+        // Create sample advisor
+        var advisorEmail = "advisor@appointmentsystem.com";
+        var advisorUser = await userManager.FindByEmailAsync(advisorEmail);
+        if (advisorUser == null)
         {
-            UserName = advisorEmail,
-            Email = advisorEmail,
-            EmailConfirmed = true
-        };
-        await userManager.CreateAsync(advisorUser, "Advisor123!");
-        await userManager.AddToRoleAsync(advisorUser, "Advisor");
+            advisorUser = new IdentityUser
+            {
+                UserName = advisorEmail,
+                Email = advisorEmail,
+                EmailConfirmed = true
+            };
+            await userManager.CreateAsync(advisorUser, "Advisor123!");
+            await userManager.AddToRoleAsync(advisorUser, "Advisor");
 
-        var advisor = new AppointmentSystem.API.Models.Advisor
-        {
-            UserId = advisorUser.Id,
-            FirstName = "John",
-            LastName = "Doe",
-            Email = advisorEmail,
-            Department = "Computer Science",
-            Specialization = "Software Engineering"
-        };
-        context.Advisors.Add(advisor);
-    }
+            var advisor = new AppointmentSystem.API.Models.Advisor
+            {
+                UserId = advisorUser.Id,
+                FirstName = "John",
+                LastName = "Doe",
+                Email = advisorEmail,
+                Department = "Computer Science",
+                Specialization = "Software Engineering"
+            };
+            context.Advisors.Add(advisor);
+        }
 
-    // Create sample student
-    var studentEmail = "student@appointmentsystem.com";
-    var studentUser = await userManager.FindByEmailAsync(studentEmail);
-    if (studentUser == null)
-    {
-        studentUser = new IdentityUser
+        // Create sample student
+        var studentEmail = "student@appointmentsystem.com";
+        var studentUser = await userManager.FindByEmailAsync(studentEmail);
+        if (studentUser == null)
         {
-            UserName = studentEmail,
-            Email = studentEmail,
-            EmailConfirmed = true
-        };
-        await userManager.CreateAsync(studentUser, "Student123!");
-        await userManager.AddToRoleAsync(studentUser, "Student");
+            studentUser = new IdentityUser
+            {
+                UserName = studentEmail,
+                Email = studentEmail,
+                EmailConfirmed = true
+            };
+            await userManager.CreateAsync(studentUser, "Student123!");
+            await userManager.AddToRoleAsync(studentUser, "Student");
 
-        var student = new AppointmentSystem.API.Models.Student
-        {
-            UserId = studentUser.Id,
-            FirstName = "Jane",
-            LastName = "Smith",
-            Email = studentEmail,
-            StudentNumber = "2024001",
-            Department = "Computer Science",
-            Grade = "Senior"
-        };
-        context.Students.Add(student);
+            var student = new AppointmentSystem.API.Models.Student
+            {
+                UserId = studentUser.Id,
+                FirstName = "Jane",
+                LastName = "Smith",
+                Email = studentEmail,
+                StudentNumber = "2024001",
+                Department = "Computer Science",
+                Grade = "Senior"
+            };
+            context.Students.Add(student);
+        }
     }
 
     await context.SaveChangesAsync();
