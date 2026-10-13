@@ -1,7 +1,5 @@
 using AppointmentSystem.API.DTOs;
-using MimeKit;
-using MailKit.Net.Smtp;
-using MailKit.Security;
+using System.Net.Http.Json;
 
 namespace AppointmentSystem.API.Services
 {
@@ -9,11 +7,13 @@ namespace AppointmentSystem.API.Services
     {
         private readonly IConfiguration _configuration;
         private readonly ILogger<EmailService> _logger;
+        private readonly HttpClient _httpClient;
 
-        public EmailService(IConfiguration configuration, ILogger<EmailService> logger)
+        public EmailService(IConfiguration configuration, ILogger<EmailService> logger, IHttpClientFactory httpClientFactory)
         {
             _configuration = configuration;
             _logger = logger;
+            _httpClient = httpClientFactory.CreateClient("Brevo");
         }
 
         public async Task SendAppointmentRequestedAsync(AppointmentResponse appointment, string recipientEmail, string recipientName, bool isAdvisorRecipient)
@@ -188,33 +188,31 @@ namespace AppointmentSystem.API.Services
             try
             {
                 var emailSettings = _configuration.GetSection("Email");
-                var smtpServer = emailSettings["SmtpServer"] ?? throw new InvalidOperationException("Email:SmtpServer is not configured");
-                var smtpPort = int.Parse(emailSettings["SmtpPort"] ?? "587");
-                var smtpUsername = emailSettings["SmtpUsername"] ?? throw new InvalidOperationException("Email:SmtpUsername is not configured");
-                var smtpPassword = emailSettings["SmtpPassword"] ?? throw new InvalidOperationException("Email:SmtpPassword is not configured");
+                var apiKey = emailSettings["BrevoApiKey"] ?? throw new InvalidOperationException("Email:BrevoApiKey is not configured");
                 var fromEmail = emailSettings["FromEmail"] ?? throw new InvalidOperationException("Email:FromEmail is not configured");
-                var fromName = emailSettings["FromName"];
+                var fromName = emailSettings["FromName"] ?? "Appointment System";
 
-                var message = new MimeMessage();
-                message.From.Add(new MailboxAddress(fromName, fromEmail));
-                message.To.Add(new MailboxAddress(toName, toEmail));
-                message.Subject = subject;
-
-                var bodyBuilder = new BodyBuilder
+                // Brevo's transactional email HTTP API (port 443) is used instead of raw SMTP (port 587)
+                // because Render's free tier blocks outbound SMTP connections.
+                using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.brevo.com/v3/smtp/email")
                 {
-                    HtmlBody = body
+                    Content = JsonContent.Create(new
+                    {
+                        sender = new { name = fromName, email = fromEmail },
+                        to = new[] { new { email = toEmail, name = string.IsNullOrEmpty(toName) ? toEmail : toName } },
+                        subject,
+                        htmlContent = body
+                    })
                 };
-                message.Body = bodyBuilder.ToMessageBody();
+                request.Headers.Add("api-key", apiKey);
+                request.Headers.Add("Accept", "application/json");
 
-                using var client = new SmtpClient
+                using var response = await _httpClient.SendAsync(request);
+                if (!response.IsSuccessStatusCode)
                 {
-                    // Emails are sent inline during requests; cap the wait so an unreachable SMTP server cannot stall the API
-                    Timeout = 10_000
-                };
-                await client.ConnectAsync(smtpServer, smtpPort, SecureSocketOptions.StartTls);
-                await client.AuthenticateAsync(smtpUsername, smtpPassword);
-                await client.SendAsync(message);
-                await client.DisconnectAsync(true);
+                    var error = await response.Content.ReadAsStringAsync();
+                    throw new InvalidOperationException($"Brevo API error ({(int)response.StatusCode}): {error}");
+                }
 
                 _logger.LogInformation("Email sent successfully to {Email}", toEmail);
             }

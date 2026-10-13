@@ -117,6 +117,7 @@ builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IAppointmentService, AppointmentService>();
 builder.Services.AddScoped<IAvailabilityService, AvailabilityService>();
+builder.Services.AddHttpClient("Brevo", client => client.Timeout = TimeSpan.FromSeconds(15));
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IReminderService, ReminderService>();
 
